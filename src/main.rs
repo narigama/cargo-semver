@@ -1,9 +1,9 @@
-use std::{fmt::Display, str::FromStr};
-
 use clap::Parser;
 use toml_edit::DocumentMut;
 
 use eyre::{Context, OptionExt};
+
+pub mod model;
 
 #[derive(Debug, Parser)]
 pub enum Command {
@@ -26,79 +26,8 @@ pub struct Args {
     pub command: Command,
 }
 
-#[derive(Debug)]
-pub struct Version {
-    pub major: u64,
-    pub minor: u64,
-    pub patch: u64,
-}
-
-impl FromStr for Version {
-    type Err = eyre::Error;
-
-    fn from_str(value: &str) -> eyre::Result<Self> {
-        let mut parts = value.split('.');
-
-        let major = parts
-            .next()
-            .ok_or_eyre(format!("Unable to find `major` version in {value}"))?
-            .parse()
-            .context("unable to parse `major` version into u64")?;
-
-        let minor = parts
-            .next()
-            .ok_or_eyre(format!("Unable to find `minor` version in {value}"))?
-            .parse()
-            .context("unable to parse `minor` version into u64")?;
-
-        let patch = parts
-            .next()
-            .ok_or_eyre(format!("Unable to find `patch` version in {value}"))?
-            .parse()
-            .context("unable to parse `patch` version into u64")?;
-
-        Ok(Self {
-            major,
-            minor,
-            patch,
-        })
-    }
-}
-
-impl Display for Version {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}.{}.{}", self.major, self.minor, self.patch)
-    }
-}
-
-impl Version {
-    fn patch_version(&self) -> Self {
-        Self {
-            major: self.major,
-            minor: self.minor,
-            patch: self.patch + 1,
-        }
-    }
-
-    fn minor_version(&self) -> Self {
-        Self {
-            major: self.major,
-            minor: self.minor + 1,
-            patch: 0,
-        }
-    }
-
-    fn major_version(&self) -> Self {
-        Self {
-            major: self.major + 1,
-            minor: 0,
-            patch: 0,
-        }
-    }
-}
-
 /// parse Cargo.toml and get it's `package.version`
-fn get_cargo_version(path: &std::path::Path) -> eyre::Result<Version> {
+fn get_cargo_version(path: &std::path::Path) -> eyre::Result<model::Version> {
     let cargo = std::fs::read_to_string(path)
         .context(format!("Couldn't find {path:?}"))?
         .parse::<DocumentMut>()
@@ -117,7 +46,7 @@ fn get_cargo_version(path: &std::path::Path) -> eyre::Result<Version> {
 }
 
 /// write the new `version` back to Cargo.toml
-fn set_cargo_version(path: &std::path::Path, version_new: &Version) -> eyre::Result<()> {
+fn set_cargo_version(path: &std::path::Path, version_new: &model::Version) -> eyre::Result<()> {
     // parse the Cargo.toml, and modify the `package.version`
     let mut cargo = std::fs::read_to_string(path)
         .context(format!("Couldn't find {path:?}"))?
@@ -145,17 +74,21 @@ fn set_cargo_version(path: &std::path::Path, version_new: &Version) -> eyre::Res
 /// check there aren't pending changes, make sure the working dir is clean before making changes
 fn is_working_dir_clean() -> eyre::Result<bool> {
     let mut command = std::process::Command::new("git");
-    command.args(["status", "--porcelain"]);
+    command.args("status --porcelain".split_ascii_whitespace());
 
     let output = command.output()?;
     Ok(String::from_utf8(output.stdout)?.trim().is_empty())
 }
 
-/// commit Cargo.toml and Cargo.lock and tag the version 
-fn commit_with_tag(version: &Version) -> eyre::Result<()> {
+/// commit Cargo.toml and Cargo.lock and tag the version
+fn commit_with_tag(version: &model::Version) -> eyre::Result<()> {
     // add files
     let mut command = std::process::Command::new("git");
-    command.args("add Cargo.toml Cargo.lock".to_string().split_ascii_whitespace());
+    command.args(
+        "add Cargo.toml Cargo.lock"
+            .to_string()
+            .split_ascii_whitespace(),
+    );
     command.output()?;
 
     // commit
