@@ -53,7 +53,7 @@ dependencies = [
 
 [[package]]
 name = "cargo-semver"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "clap",
  "eyre",
