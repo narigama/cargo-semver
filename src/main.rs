@@ -30,17 +30,19 @@ pub enum Command {
 }
 
 #[derive(Debug, Parser)]
-pub struct Args {
-    /// don't actually do anything, just print what would happen
-    #[clap(long)]
-    pub dry_run: bool,
+pub enum Args {
+    Semver {
+        /// don't actually do anything, just print what would happen
+        #[clap(long)]
+        dry_run: bool,
 
-    /// commit the new Cargo.toml/lock and tag it
-    #[clap(long)]
-    pub git: bool,
+        /// commit the new Cargo.toml/lock and tag it
+        #[clap(long)]
+        git: bool,
 
-    #[clap(subcommand)]
-    pub command: Command,
+        #[clap(subcommand)]
+        command: Command,
+    },
 }
 
 /// parse Cargo.toml and get it's `package.version`
@@ -127,30 +129,40 @@ fn main() -> eyre::Result<()> {
     let args = Args::parse();
     let version = get_cargo_version(&path)?;
 
-    if !args.dry_run && !is_working_dir_clean()? {
-        println!("Working directory doesn't appear to be clean. Commit your changes first.");
-        return Ok(());
-    }
+    match args {
+        Args::Semver {
+            dry_run,
+            git,
+            command,
+        } => {
+            if !dry_run && !is_working_dir_clean()? {
+                println!(
+                    "Working directory doesn't appear to be clean. Commit your changes first."
+                );
+                return Ok(());
+            }
 
-    let version_new = match &args.command {
-        Command::Patch => version.patch_version(),
-        Command::Minor => version.minor_version(),
-        Command::Major => version.major_version(),
-    };
+            let version_new = match &command {
+                Command::Patch => version.patch_version(),
+                Command::Minor => version.minor_version(),
+                Command::Major => version.major_version(),
+            };
 
-    println!("Promoting from {version} to {version_new}");
-    if args.git {
-        println!("--git was included, will commit and tag this version")
-    }
+            println!("Promoting from {version} to {version_new}");
+            if git {
+                println!("--git was included, will commit and tag this version")
+            }
 
-    match args.dry_run {
-        true => println!("But this was a --dry-run. Not actually doing anything..."),
-        false => {
-            set_cargo_version(&path, &version_new)?;
-            println!("Wrote changes to {:?}", &path);
+            match dry_run {
+                true => println!("But this was a --dry-run. Not actually doing anything..."),
+                false => {
+                    set_cargo_version(&path, &version_new)?;
+                    println!("Wrote changes to {:?}", &path);
 
-            if args.git {
-                commit_with_tag(&version_new)?;
+                    if git {
+                        commit_with_tag(&version_new)?;
+                    }
+                }
             }
         }
     }
